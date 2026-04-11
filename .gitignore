@@ -1,0 +1,1 @@
+# Patterns to exclude: .env, __pycache__, .terraform, *.tfstate, credentials
