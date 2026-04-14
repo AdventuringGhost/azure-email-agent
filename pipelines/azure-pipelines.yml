@@ -1,1 +1,167 @@
-# Azure DevOps pipeline: build, test, and deploy stages for the email agent
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  pythonVersion: "3.11"
+  tfWorkingDir: "$(Build.SourcesDirectory)/infra"
+  agentDir: "$(Build.SourcesDirectory)/agent"
+
+# ── Stage 1: Validate ──────────────────────────────────────────────────────────
+stages:
+  - stage: validate
+    displayName: "Validate (lint + test)"
+    jobs:
+      - job: lint_and_test
+        displayName: "pip install / ruff / pytest"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "$(pythonVersion)"
+            displayName: "Set Python $(pythonVersion)"
+
+          - script: pip install -r requirements.txt ruff pytest
+            displayName: "Install dependencies"
+
+          - script: ruff check .
+            displayName: "Lint (ruff)"
+
+          - script: pytest --tb=short -q
+            displayName: "Run tests (pytest)"
+
+# ── Stage 2: Terraform Plan ────────────────────────────────────────────────────
+  - stage: terraform_plan
+    displayName: "Terraform Plan"
+    dependsOn: validate
+    condition: succeeded()
+    jobs:
+      - job: tf_plan
+        displayName: "terraform init + plan"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: "latest"
+            displayName: "Install Terraform"
+
+          - task: TerraformTaskV4@4
+            displayName: "terraform init"
+            inputs:
+              provider: azurerm
+              command: init
+              workingDirectory: "$(tfWorkingDir)"
+              backendServiceArm: "$(ARM_SERVICE_CONNECTION)"
+              backendAzureRmResourceGroupName: "$(TF_BACKEND_RESOURCE_GROUP)"
+              backendAzureRmStorageAccountName: "$(TF_BACKEND_STORAGE_ACCOUNT)"
+              backendAzureRmContainerName: "$(TF_BACKEND_CONTAINER)"
+              backendAzureRmKey: "email-agent.tfstate"
+
+          - task: TerraformTaskV4@4
+            displayName: "terraform plan"
+            inputs:
+              provider: azurerm
+              command: plan
+              workingDirectory: "$(tfWorkingDir)"
+              environmentServiceNameAzureRM: "$(ARM_SERVICE_CONNECTION)"
+              commandOptions: >-
+                -out=$(Build.ArtifactStagingDirectory)/tfplan
+                -var="admin_ssh_public_key=$(ADMIN_SSH_PUBLIC_KEY)"
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish plan artifact"
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)/tfplan"
+              artifact: tfplan
+              publishLocation: pipeline
+
+      # Manual approval gate before terraform apply
+      - job: wait_for_approval
+        displayName: "Manual approval required"
+        dependsOn: tf_plan
+        pool: server
+        steps:
+          - task: ManualValidation@0
+            timeoutInMinutes: 1440  # 24-hour window
+            inputs:
+              notifyUsers: "$(APPROVER_EMAIL)"
+              instructions: |
+                Review the Terraform plan artifact published in the previous job,
+                then approve to proceed with `terraform apply` and VM deployment.
+              onTimeout: reject
+
+# ── Stage 3: Deploy ────────────────────────────────────────────────────────────
+  - stage: deploy
+    displayName: "Deploy (apply + copy agent)"
+    dependsOn: terraform_plan
+    condition: succeeded()
+    jobs:
+      - job: tf_apply
+        displayName: "terraform apply"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: "latest"
+            displayName: "Install Terraform"
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download plan artifact"
+            inputs:
+              artifact: tfplan
+              path: "$(Build.ArtifactStagingDirectory)"
+
+          - task: TerraformTaskV4@4
+            displayName: "terraform init (for apply)"
+            inputs:
+              provider: azurerm
+              command: init
+              workingDirectory: "$(tfWorkingDir)"
+              backendServiceArm: "$(ARM_SERVICE_CONNECTION)"
+              backendAzureRmResourceGroupName: "$(TF_BACKEND_RESOURCE_GROUP)"
+              backendAzureRmStorageAccountName: "$(TF_BACKEND_STORAGE_ACCOUNT)"
+              backendAzureRmContainerName: "$(TF_BACKEND_CONTAINER)"
+              backendAzureRmKey: "email-agent.tfstate"
+
+          - task: TerraformTaskV4@4
+            displayName: "terraform apply"
+            inputs:
+              provider: azurerm
+              command: apply
+              workingDirectory: "$(tfWorkingDir)"
+              environmentServiceNameAzureRM: "$(ARM_SERVICE_CONNECTION)"
+              commandOptions: "$(Build.ArtifactStagingDirectory)/tfplan"
+
+      - job: copy_agent
+        displayName: "Copy agent/ to VM via SSH"
+        dependsOn: tf_apply
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: |
+              echo "$(AGENT_SSH_PRIVATE_KEY)" | tr -d '\r' > /tmp/agent_key
+              chmod 600 /tmp/agent_key
+            displayName: "Write SSH private key"
+
+          - script: |
+              rsync -avz --delete \
+                -e "ssh -i /tmp/agent_key -o StrictHostKeyChecking=no" \
+                $(agentDir)/ \
+                $(AGENT_VM_USER)@$(AGENT_VM_IP):/opt/email-agent/agent/
+            displayName: "rsync agent/ to VM"
+
+          - script: |
+              ssh -i /tmp/agent_key \
+                -o StrictHostKeyChecking=no \
+                $(AGENT_VM_USER)@$(AGENT_VM_IP) \
+                "pip install -r /opt/email-agent/requirements.txt \
+                 && sudo systemctl restart email-agent || true"
+            displayName: "Install deps and restart service on VM"
+
+          - script: rm -f /tmp/agent_key
+            condition: always()
+            displayName: "Clean up SSH key"
