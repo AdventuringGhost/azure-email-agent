@@ -7,7 +7,7 @@ variable "subscription_id" {
 variable "location" {
   description = "Azure region for all resources"
   type        = string
-  default     = "eastus2"
+  default     = "eastus"
 }
 
 variable "project_name" {
@@ -19,7 +19,7 @@ variable "project_name" {
 variable "vm_size" {
   description = "VM SKU (B1s for demo cost control)"
   type        = string
-  default     = "Standard_B1s"
+  default     = "Standard_D2s_v3"
 }
 
 variable "admin_username" {
