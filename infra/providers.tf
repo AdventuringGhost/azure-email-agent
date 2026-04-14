@@ -4,13 +4,14 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.110"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
-  subscription_id = var.subscription_id
+  subscription_id             = var.subscription_id
+  resource_provider_registrations = "none"
 
   features {
     key_vault {
