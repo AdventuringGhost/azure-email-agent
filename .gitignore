@@ -1,1 +1,41 @@
-# Patterns to exclude: .env, __pycache__, .terraform, *.tfstate, credentials
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform.lock.hcl
+crash.log
+
+# Secrets and credentials
+.env
+token.json
+credentials.json
+
+# SSH keys
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+id_rsa*
+id_ed25519
+id_ed25519.pub
+id_ed25519*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
