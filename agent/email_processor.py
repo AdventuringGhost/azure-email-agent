@@ -12,7 +12,6 @@ class EmailProcessor:
     def __init__(self, config: Config) -> None:
         self._gmail = GmailClient(config.gmail_credentials_json)
         self._claude = ClaudeClient(
-            endpoint=config.foundry_endpoint,
             api_key=config.foundry_api_key,
             deployment=config.foundry_deployment,
         )

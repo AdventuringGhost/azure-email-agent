@@ -1,4 +1,4 @@
-"""Anthropic SDK client pointed at Azure AI Foundry; classifies and drafts email replies."""
+"""Anthropic SDK client; classifies and drafts email replies."""
 import json
 import logging
 
@@ -16,11 +16,8 @@ Output only the JSON object. No explanation, no markdown fences."""
 
 
 class ClaudeClient:
-    def __init__(self, endpoint: str, api_key: str, deployment: str) -> None:
-        self._client = anthropic.Anthropic(
-            api_key=api_key,
-            base_url=endpoint,
-        )
+    def __init__(self, api_key: str, deployment: str) -> None:
+        self._client = anthropic.Anthropic(api_key=api_key)
         self._deployment = deployment
 
     def process_email(self, subject: str, body: str, sender: str) -> dict:

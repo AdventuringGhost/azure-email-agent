@@ -9,7 +9,6 @@ from azure.keyvault.secrets import SecretClient
 @dataclass
 class Config:
     key_vault_name: str
-    foundry_endpoint: str
     foundry_deployment: str
     poll_interval_seconds: int
     # Populated by _load_secrets(); not passed to __init__
@@ -21,7 +20,6 @@ def load_config() -> Config:
     """Load environment config then pull secrets from Key Vault."""
     cfg = Config(
         key_vault_name=os.environ["KEY_VAULT_NAME"],
-        foundry_endpoint=os.environ["AZURE_FOUNDRY_ENDPOINT"],
         foundry_deployment=os.environ["AZURE_FOUNDRY_DEPLOYMENT"],
         poll_interval_seconds=int(os.environ.get("POLL_INTERVAL_SECONDS", "60")),
     )
