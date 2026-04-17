@@ -32,5 +32,5 @@ I'd replace the polling loop with Gmail Pub/Sub push notifications behind an Azu
 
 ## Links
 
-- GitHub: [github.com/Adventuringghost/azure-email-agent](https://github.com/Adventuringghost/azure-email-agent)
+- GitHub: [github.com/AdventuringGhost/azure-email-agent](https://github.com/AdventuringGhost/azure-email-agent)
 - Screen recording: adventuringghost.com/projects/azure-email-agent
